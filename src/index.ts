@@ -1,5 +1,5 @@
 /**
- * @license CVZXEOV (2026)
+ * @license MIT
  */
 
 export * from './types';
