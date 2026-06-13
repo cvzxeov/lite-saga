@@ -1,0 +1,25 @@
+{
+  "name": "lite-saga",
+  "version": "1.0.0",
+  "description": "Magical, zero-dependency, strongly typed Saga pattern (compensating transactions) for Node.js and Browser.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "saga",
+    "transactions",
+    "rollback",
+    "typescript",
+    "promise",
+    "state-machine"
+  ],
+  "author": "Awesome Developer",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
