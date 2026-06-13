@@ -8,12 +8,19 @@ import { SagaMiddleware } from '../types';
 export function createStateSnapshotMiddleware<Ctx>(
   onSnapshot: (stepName: string, stateBefore: Ctx, stateAfter: Ctx) => void | Promise<void>
 ): SagaMiddleware<Ctx> {
+  const clone = (obj: any) => {
+    if (typeof structuredClone === 'function') {
+      return structuredClone(obj);
+    }
+    return JSON.parse(JSON.stringify(obj));
+  };
+
   return async (step, context, next) => {
-    const stateBefore = JSON.parse(JSON.stringify(context));
+    const stateBefore = clone(context);
     
     const result = await next();
     
-    const stateAfter = JSON.parse(JSON.stringify(context));
+    const stateAfter = clone(context);
     
     await onSnapshot(step.name, stateBefore, stateAfter);
     
