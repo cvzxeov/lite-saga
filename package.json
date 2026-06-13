@@ -1,5 +1,5 @@
 {
-  "name": "lite-saga",
+  "name": "@cvzxeov/lite-saga",
   "version": "1.0.1",
   "description": "Magical, zero-dependency, strongly typed Saga pattern (compensating transactions) for Node.js and Browser.",
   "main": "dist/index.js",

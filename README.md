@@ -1,12 +1,10 @@
-# 🌟 lite-saga
+# 🌟 @cvzxeov/lite-saga
 
 A magical, zero-dependency, strongly typed Saga pattern (compensating transactions) for Node.js and Browser.
 
-[![npm version](https://img.shields.io/npm/v/lite-saga.svg)](https://www.npmjs.com/package/lite-saga)
-[![License](https://img.shields.io/npm/l/lite-saga.svg)](https://github.com/your-repo/lite-saga)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)](https://www.typescriptlang.org/)
 
-`lite-saga` helps you manage complex, distributed transactions across microservices, databases, or third-party APIs. If one step of a complex process fails, `lite-saga` automatically rolls back all previously successful steps in reverse order, ensuring your system remains in a consistent state.
+`@cvzxeov/lite-saga` helps you manage complex, distributed transactions across microservices, databases, or third-party APIs. If one step of a complex process fails, `@cvzxeov/lite-saga` automatically rolls back all previously successful steps in reverse order, ensuring your system remains in a consistent state.
 
 ## ✨ Features
 
@@ -25,12 +23,12 @@ A magical, zero-dependency, strongly typed Saga pattern (compensating transactio
 ## 📦 Installation
 
 ```bash
-npm install lite-saga
+npm install @cvzxeov/lite-saga
 ```
 *or using yarn / pnpm:*
 ```bash
-yarn add lite-saga
-pnpm add lite-saga
+yarn add @cvzxeov/lite-saga
+pnpm add @cvzxeov/lite-saga
 ```
 
 ---
