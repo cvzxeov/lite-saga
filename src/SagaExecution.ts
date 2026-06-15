@@ -30,16 +30,32 @@ export class SagaExecution<Ctx extends Record<string, any>> {
   public async executeWithHistory(initialContext: Partial<Ctx> = {}, options?: SagaExecutionOptions): Promise<{ context: Ctx; history: ExecutedStep<Ctx>[] }> {
     const executedSteps: ExecutedStep<Ctx>[] = [];
     const context: Ctx = { ...initialContext } as Ctx;
-    const signal = options?.signal;
 
     await this.hooks.onStart?.(context);
 
-    for (const step of this.steps) {
-      if ('parallel' in step && step.parallel) {
-        await this.executeParallelGroup(step.name, step.steps, executedSteps, context, signal);
-      } else {
-        await this.executeSequentialStep(step as SagaStep<Ctx, any>, executedSteps, context, signal);
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const abortController = new AbortController();
+    const signal = abortController.signal;
+
+    if (options?.signal) {
+      options.signal.addEventListener('abort', () => abortController.abort());
+      if (options.signal.aborted) abortController.abort();
+    }
+
+    if (options?.timeout && options.timeout > 0) {
+      timeoutId = setTimeout(() => abortController.abort(), options.timeout);
+    }
+
+    try {
+      for (const step of this.steps) {
+        if ('parallel' in step && step.parallel) {
+          await this.executeParallelGroup(step.name, step.steps, executedSteps, context, signal);
+        } else {
+          await this.executeSequentialStep(step as SagaStep<Ctx, any>, executedSteps, context, signal);
+        }
       }
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
     }
 
     await this.hooks.onSuccess?.(context);
@@ -48,7 +64,7 @@ export class SagaExecution<Ctx extends Record<string, any>> {
 
   private async executeSequentialStep(step: SagaStep<Ctx, any>, executedSteps: ExecutedStep<Ctx>[], context: Ctx, signal?: AbortSignal): Promise<void> {
     try {
-      const res = await withAbortSignal(this.runSingleStep(step, context), signal);
+      const res = await this.runSingleStep(step, context, signal);
       if (res) executedSteps.push(res);
     } catch (error) {
       await this.hooks.onStepFailed?.(step.name, error, context);
@@ -67,7 +83,7 @@ export class SagaExecution<Ctx extends Record<string, any>> {
     const results = await Promise.allSettled(
       steps.map(async (step) => {
         try {
-          return await withAbortSignal(this.runSingleStep(step, context), signal);
+          return await this.runSingleStep(step, context, signal);
         } catch (error) {
           await this.hooks.onStepFailed?.(step.name, error, context);
           throw error;
@@ -99,7 +115,7 @@ export class SagaExecution<Ctx extends Record<string, any>> {
     }
   }
 
-  private async runSingleStep(step: SagaStep<Ctx, any>, context: Ctx): Promise<ExecutedStep<Ctx> | null> {
+  private async runSingleStep(step: SagaStep<Ctx, any>, context: Ctx, signal?: AbortSignal): Promise<ExecutedStep<Ctx> | null> {
     let index = -1;
 
     const dispatch = async (i: number): Promise<ExecutedStep<Ctx> | null> => {
@@ -110,13 +126,13 @@ export class SagaExecution<Ctx extends Record<string, any>> {
         return this.middlewares[i](step, context, () => dispatch(i + 1));
       }
 
-      return this.executeStepAction(step, context);
+      return this.executeStepAction(step, context, signal);
     };
 
     return dispatch(0);
   }
 
-  private async executeStepAction(step: SagaStep<Ctx, any>, context: Ctx): Promise<ExecutedStep<Ctx> | null> {
+  private async executeStepAction(step: SagaStep<Ctx, any>, context: Ctx, signal?: AbortSignal): Promise<ExecutedStep<Ctx> | null> {
     if (step.condition) {
       const shouldExecute = await Promise.resolve(step.condition(context));
       if (!shouldExecute) return null;
@@ -127,6 +143,7 @@ export class SagaExecution<Ctx extends Record<string, any>> {
     try {
       const result = await withRetry(async () => {
         let actionPromise = Promise.resolve().then(() => step.action(context));
+        actionPromise = withAbortSignal(actionPromise, signal);
         if (timeout && timeout > 0) {
           actionPromise = withTimeout(actionPromise, timeout, step.name);
         }

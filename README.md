@@ -2,9 +2,30 @@
 
 A magical, zero-dependency, strongly typed Saga pattern (compensating transactions) for Node.js and Browser.
 
+[![npm version](https://img.shields.io/npm/v/@cvzxeov/lite-saga.svg)](https://www.npmjs.com/package/@cvzxeov/lite-saga)
+[![npm downloads](https://img.shields.io/npm/dm/@cvzxeov/lite-saga.svg)](https://www.npmjs.com/package/@cvzxeov/lite-saga)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg)](https://www.typescriptlang.org/)
 
 `@cvzxeov/lite-saga` helps you manage complex, distributed transactions across microservices, databases, or third-party APIs. If one step of a complex process fails, `@cvzxeov/lite-saga` automatically rolls back all previously successful steps in reverse order, ensuring your system remains in a consistent state.
+
+## 📖 Table of Contents
+
+- ✨ Features
+- 🤔 What is a Saga? (For Beginners)
+- 📦 Installation
+- 🚀 Quick Start
+- 🌐 Using with Axios / Fetch
+- 📚 Advanced Usage
+  - ⚡ Parallel Execution
+  - 🔀 Conditional Steps (`stepIf`)
+  - ⏳ Timeouts and Retries
+  - 🚑 Fallbacks & Compensation Retries
+  - 🛑 Canceling Sagas (`AbortController`)
+  - 🔌 Middlewares (Plugins)
+  - 🎣 Lifecycle Hooks
+- 📄 License
+
+---
 
 ## ✨ Features
 
@@ -20,6 +41,20 @@ A magical, zero-dependency, strongly typed Saga pattern (compensating transactio
 - 🚑 **Fallbacks:** Provide alternative actions to prevent saga failures.
 - 🛑 **Abortable:** Safely cancel running sagas using `AbortController`.
 - 🛡️ **Reliable Rollbacks:** Built-in compensation retries.
+
+---
+
+## 🤔 What is a Saga? (For Beginners)
+
+In modern web development (especially with microservices), a single user action might require calling multiple different APIs or databases. 
+
+**The Problem:** What happens if Step 1 and Step 2 succeed, but Step 3 fails? Your system is now in a broken, half-finished state. A simple `try/catch` won't magically undo the database changes made in Step 1!
+
+**The Solution:** The **Saga Pattern**! A Saga is a sequence of transactions. Each step has two parts:
+1. **Action:** Do the work (e.g., *charge a card, create a user*).
+2. **Compensation (Rollback):** Undo the work (e.g., *refund the card, delete the user*).
+
+If *any* step fails, `@cvzxeov/lite-saga` catches the error and **automatically runs the compensations for all previously completed steps in reverse order**. Your system goes back to exactly how it was before, keeping your data clean and safe!
 
 ---
 
@@ -88,6 +123,52 @@ try {
 
 ---
 
+## 🌐 Using with Axios / Fetch
+
+`lite-saga` is completely agnostic to how you make your network requests. It works perfectly with `axios`, `fetch`, `got`, or any Promise-based library.
+
+Since `axios` automatically throws an error for HTTP statuses outside the `2xx` range, it integrates flawlessly with `lite-saga`. If a request fails, the saga automatically stops and starts rolling back!
+
+```typescript
+import axios from 'axios';
+import { SagaBuilder } from 'lite-saga';
+
+interface UserContext {
+  userData: { name: string; email: string };
+  createdUserId?: string;
+}
+
+const userRegistrationSaga = new SagaBuilder<UserContext>()
+  .step(
+    'Create User in Auth Service',
+    async (ctx) => {
+      // Axios throws on 4xx/5xx. If this fails, the saga halts here.
+      const response = await axios.post('https://api.example.com/users', ctx.userData);
+      
+      // Save the new User ID to the context so we can delete it during rollback!
+      ctx.createdUserId = response.data.id;
+    },
+    async (ctx) => {
+      // ROLLBACK: This runs ONLY if a future step fails.
+      // We use the ID saved in the main action to undo the operation.
+      if (ctx.createdUserId) {
+        await axios.delete(`https://api.example.com/users/${ctx.createdUserId}`);
+      }
+    }
+  )
+  .step(
+    'Send Welcome Email',
+    async (ctx) => {
+      // If this email service returns a 500 Error, this step fails.
+      // The saga will then automatically execute the 'Create User' rollback above!
+      await axios.post('https://api.example.com/emails/welcome', { to: ctx.userData.email });
+    }
+  )
+  .build();
+```
+
+---
+
 ## 📚 Advanced Usage
 
 ### ⚡ Parallel Execution
@@ -126,12 +207,30 @@ Network requests can be flaky. Add resilience to your steps natively:
 ```typescript
 sagaBuilder.step(
   'External API Call',
-  async () => fetch('https://flaky-api.com/data'),
-  async () => fetch('https://flaky-api.com/rollback'),
+  async () => fetch('https://api.example.com/data'),
+  async () => fetch('https://api.example.com/rollback'),
   {
     retries: 3,        // Try up to 3 times before failing
     retryDelay: 1000,  // Wait 1 second between retries
     timeout: 5000      // Cancel step if it takes more than 5 seconds
+  }
+)
+```
+
+For production systems, you can also use **Exponential Backoff** by passing a function to `retryDelay`:
+
+```typescript
+sagaBuilder.step(
+  'External API Call',
+  async () => fetch('https://api.example.com/data'),
+  async () => fetch('https://api.example.com/rollback'),
+  {
+    retries: 3,
+    // Attempt 1: wait 1s, Attempt 2: wait 2s, Attempt 3: wait 3s
+    retryDelay: (attempt) => attempt * 1000, 
+    compensationRetries: 3,
+    // 2s, 4s, 8s backoff for rollback
+    compensationRetryDelay: (attempt) => Math.pow(2, attempt) * 1000 
   }
 )
 ```

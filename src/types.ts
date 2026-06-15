@@ -13,10 +13,10 @@ export type CompensationFn<Ctx, Res> = (ctx: Ctx, result: Res | undefined) => Pr
  */
 export interface StepOptions<Ctx = any, Res = any> {
   retries?: number;
-  retryDelay?: number;
+  retryDelay?: number | ((attempt: number) => number);
   timeout?: number;
   compensationRetries?: number;
-  compensationRetryDelay?: number;
+  compensationRetryDelay?: number | ((attempt: number) => number);
   fallback?: ActionFn<Ctx, Res>;
 }
 
@@ -25,6 +25,7 @@ export interface StepOptions<Ctx = any, Res = any> {
  */
 export interface SagaExecutionOptions {
   signal?: AbortSignal;
+  timeout?: number;
 }
 
 /**

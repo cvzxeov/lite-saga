@@ -59,7 +59,7 @@ export async function withAbortSignal<T>(
 export async function withRetry<T>(
   action: () => Promise<T>,
   retries: number,
-  retryDelay: number
+  retryDelay: number | ((attempt: number) => number)
 ): Promise<T> {
   let lastError: unknown;
 
@@ -69,7 +69,8 @@ export async function withRetry<T>(
     } catch (error) {
       lastError = error;
       if (attempt < retries) {
-        if (retryDelay > 0) await delay(retryDelay);
+        const delayMs = typeof retryDelay === 'function' ? retryDelay(attempt + 1) : retryDelay;
+        if (delayMs > 0) await delay(delayMs);
       }
     }
   }
