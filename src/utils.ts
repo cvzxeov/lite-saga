@@ -1,4 +1,4 @@
-import { SagaTimeoutError } from './errors';
+import { SagaTimeoutError, SagaAbortError } from './errors';
 
 /**
  * Задержка выполнения (sleep).
@@ -26,6 +26,30 @@ export async function withTimeout<T>(
     return await Promise.race([promise, timeoutPromise]);
   } finally {
     clearTimeout(timeoutId!);
+  }
+}
+
+/**
+ * Прерывает выполнение Promise, если срабатывает AbortSignal.
+ */
+export async function withAbortSignal<T>(
+  promise: Promise<T>,
+  signal?: AbortSignal
+): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) throw new SagaAbortError();
+
+  let onAbort: () => void;
+
+  const abortPromise = new Promise<never>((_, reject) => {
+    onAbort = () => reject(new SagaAbortError());
+    signal.addEventListener('abort', onAbort);
+  });
+
+  try {
+    return await Promise.race([promise, abortPromise]);
+  } finally {
+    signal.removeEventListener('abort', onAbort!);
   }
 }
 

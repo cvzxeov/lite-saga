@@ -17,6 +17,9 @@ A magical, zero-dependency, strongly typed Saga pattern (compensating transactio
 - ⏳ **Resilience built-in:** Retries, timeouts, and delays out of the box.
 - 🔌 **Middlewares:** Intercept steps for logging, profiling, or state snapshots.
 - 🎣 **Lifecycle Hooks:** Tap into `onStart`, `onStepSuccess`, `onFailure`, etc.
+- 🚑 **Fallbacks:** Provide alternative actions to prevent saga failures.
+- 🛑 **Abortable:** Safely cancel running sagas using `AbortController`.
+- 🛡️ **Reliable Rollbacks:** Built-in compensation retries.
 
 ---
 
@@ -131,6 +134,36 @@ sagaBuilder.step(
     timeout: 5000      // Cancel step if it takes more than 5 seconds
   }
 )
+```
+
+### 🚑 Fallbacks & Compensation Retries
+Make your sagas bulletproof by providing fallback actions when the main step fails, and retrying rollback actions to prevent inconsistent states.
+
+```typescript
+sagaBuilder.step(
+  'Charge User',
+  async () => api.chargeWithStripe(),
+  async () => api.refundWithStripe(),
+  {
+    retries: 2,
+    fallback: async () => api.chargeWithPayPal(), // If Stripe fails, try PayPal
+    compensationRetries: 3, // If refund fails, retry up to 3 times
+    compensationRetryDelay: 1000
+  }
+)
+```
+
+### 🛑 Canceling Sagas (`AbortController`)
+You can safely cancel a running saga. This immediately aborts the execution and automatically triggers the rollback process for all previously successful steps to maintain data consistency.
+
+```typescript
+const controller = new AbortController();
+
+saga.execute({ userId: 1 }, { signal: controller.signal })
+  .catch(err => console.log('Saga aborted:', err.message));
+
+// Cancel the saga execution after 2 seconds
+setTimeout(() => controller.abort(), 2000);
 ```
 
 ### 🔌 Middlewares (Plugins)

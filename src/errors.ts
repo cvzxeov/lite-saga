@@ -19,6 +19,15 @@ export class SagaTimeoutError extends SagaError {
 }
 
 /**
+ * Ошибка прерывания выполнения саги (AbortController).
+ */
+export class SagaAbortError extends SagaError {
+  constructor(message: string = 'Saga execution was aborted.') {
+    super(message);
+  }
+}
+
+/**
  * Ошибка выполнения саги.
  */
 export class SagaExecutionError extends SagaError {

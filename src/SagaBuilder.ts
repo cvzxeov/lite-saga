@@ -23,7 +23,7 @@ export class SagaBuilder<Ctx extends Record<string, any> = {}> {
     name: string,
     action: ActionFn<Ctx, Res>,
     compensation?: CompensationFn<Ctx, Res>,
-    options?: StepOptions
+    options?: StepOptions<Ctx, Res>
   ): this {
     this.steps.push({ name, action, compensation, options });
     return this;
@@ -37,7 +37,7 @@ export class SagaBuilder<Ctx extends Record<string, any> = {}> {
     name: string,
     action: ActionFn<Ctx, Res>,
     compensation?: CompensationFn<Ctx, Res>,
-    options?: StepOptions
+    options?: StepOptions<Ctx, Res>
   ): this {
     this.steps.push({ name, action, compensation, options, condition });
     return this;
@@ -61,7 +61,7 @@ export class SagaBuilder<Ctx extends Record<string, any> = {}> {
    * @param subSaga Экземпляр SagaExecution
    * @param options Настройки выполнения
    */
-  public addSubSaga(name: string, subSaga: SagaExecution<Ctx>, options?: StepOptions): this {
+  public addSubSaga(name: string, subSaga: SagaExecution<Ctx>, options?: StepOptions<Ctx, any>): this {
     return this.step(
       name,
       async (ctx) => {

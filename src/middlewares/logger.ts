@@ -1,20 +1,20 @@
 import { SagaMiddleware } from '../types';
 
 /**
- * Middleware для логирования выполнения шагов саги в консоль.
+ * Middleware for logging saga step execution to the console.
  */
 export const loggerMiddleware: SagaMiddleware<any> = async (step, context, next) => {
-  console.log(`[Saga Logger] ⏳ Начало шага: "${step.name}"`);
+  console.log(`[Saga Logger] ⏳ Starting step: "${step.name}"`);
   const start = Date.now();
   
   try {
     const result = await next();
     const duration = Date.now() - start;
-    console.log(`[Saga Logger] ✅ Шаг завершен: "${step.name}" (${duration}ms)`);
+    console.log(`[Saga Logger] ✅ Step completed: "${step.name}" (${duration}ms)`);
     return result;
   } catch (error) {
     const duration = Date.now() - start;
-    console.error(`[Saga Logger] ❌ Ошибка в шаге: "${step.name}" (${duration}ms)`);
+    console.error(`[Saga Logger] ❌ Step failed: "${step.name}" (${duration}ms)`);
     throw error;
   }
 };

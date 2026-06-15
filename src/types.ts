@@ -11,10 +11,20 @@ export type CompensationFn<Ctx, Res> = (ctx: Ctx, result: Res | undefined) => Pr
 /**
  * Настройки выполнения шага.
  */
-export interface StepOptions {
+export interface StepOptions<Ctx = any, Res = any> {
   retries?: number;
   retryDelay?: number;
   timeout?: number;
+  compensationRetries?: number;
+  compensationRetryDelay?: number;
+  fallback?: ActionFn<Ctx, Res>;
+}
+
+/**
+ * Настройки запуска саги.
+ */
+export interface SagaExecutionOptions {
+  signal?: AbortSignal;
 }
 
 /**
@@ -24,7 +34,7 @@ export interface SagaStep<Ctx = any, Res = any> {
   name: string;
   action: ActionFn<Ctx, Res>;
   compensation?: CompensationFn<Ctx, Res>;
-  options?: StepOptions;
+  options?: StepOptions<Ctx, Res>;
   condition?: (ctx: Ctx) => boolean | Promise<boolean>;
 }
 

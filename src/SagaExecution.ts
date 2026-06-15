@@ -1,6 +1,6 @@
-import { SagaHooks, SagaStep, ExecutedStep, SagaItem, SagaMiddleware } from './types';
+import { SagaHooks, SagaStep, ExecutedStep, SagaItem, SagaMiddleware, SagaExecutionOptions } from './types';
 import { SagaExecutionError, SagaCompensationError } from './errors';
-import { withRetry, withTimeout } from './utils';
+import { withRetry, withTimeout, withAbortSignal } from './utils';
 
 /**
  * Движок выполнения саги. Управляет последовательностью шагов, контекстом, таймаутами, повторными попытками и откатами.
@@ -16,27 +16,29 @@ export class SagaExecution<Ctx extends Record<string, any>> {
    * Выполняет сагу.
    * 
    * @param initialContext Начальный контекст
+   * @param options Настройки запуска саги
    * @returns Итоговый контекст
    */
-  public async execute(initialContext: Partial<Ctx> = {}): Promise<Ctx> {
-    const { context } = await this.executeWithHistory(initialContext);
+  public async execute(initialContext: Partial<Ctx> = {}, options?: SagaExecutionOptions): Promise<Ctx> {
+    const { context } = await this.executeWithHistory(initialContext, options);
     return context;
   }
 
   /**
    * Выполняет сагу и возвращает контекст вместе с историей шагов.
    */
-  public async executeWithHistory(initialContext: Partial<Ctx> = {}): Promise<{ context: Ctx; history: ExecutedStep<Ctx>[] }> {
+  public async executeWithHistory(initialContext: Partial<Ctx> = {}, options?: SagaExecutionOptions): Promise<{ context: Ctx; history: ExecutedStep<Ctx>[] }> {
     const executedSteps: ExecutedStep<Ctx>[] = [];
     const context: Ctx = { ...initialContext } as Ctx;
+    const signal = options?.signal;
 
     await this.hooks.onStart?.(context);
 
     for (const step of this.steps) {
       if ('parallel' in step && step.parallel) {
-        await this.executeParallelGroup(step.name, step.steps, executedSteps, context);
+        await this.executeParallelGroup(step.name, step.steps, executedSteps, context, signal);
       } else {
-        await this.executeSequentialStep(step as SagaStep<Ctx, any>, executedSteps, context);
+        await this.executeSequentialStep(step as SagaStep<Ctx, any>, executedSteps, context, signal);
       }
     }
 
@@ -44,9 +46,9 @@ export class SagaExecution<Ctx extends Record<string, any>> {
     return { context, history: executedSteps };
   }
 
-  private async executeSequentialStep(step: SagaStep<Ctx, any>, executedSteps: ExecutedStep<Ctx>[], context: Ctx): Promise<void> {
+  private async executeSequentialStep(step: SagaStep<Ctx, any>, executedSteps: ExecutedStep<Ctx>[], context: Ctx, signal?: AbortSignal): Promise<void> {
     try {
-      const res = await this.runSingleStep(step, context);
+      const res = await withAbortSignal(this.runSingleStep(step, context), signal);
       if (res) executedSteps.push(res);
     } catch (error) {
       await this.hooks.onStepFailed?.(step.name, error, context);
@@ -61,11 +63,11 @@ export class SagaExecution<Ctx extends Record<string, any>> {
     }
   }
 
-  private async executeParallelGroup(groupName: string, steps: SagaStep<Ctx, any>[], executedSteps: ExecutedStep<Ctx>[], context: Ctx): Promise<void> {
+  private async executeParallelGroup(groupName: string, steps: SagaStep<Ctx, any>[], executedSteps: ExecutedStep<Ctx>[], context: Ctx, signal?: AbortSignal): Promise<void> {
     const results = await Promise.allSettled(
       steps.map(async (step) => {
         try {
-          return await this.runSingleStep(step, context);
+          return await withAbortSignal(this.runSingleStep(step, context), signal);
         } catch (error) {
           await this.hooks.onStepFailed?.(step.name, error, context);
           throw error;
@@ -122,16 +124,26 @@ export class SagaExecution<Ctx extends Record<string, any>> {
 
     const { retries = 0, retryDelay = 0, timeout } = step.options || {};
 
-    const result = await withRetry(async () => {
-      let actionPromise = Promise.resolve().then(() => step.action(context));
-      if (timeout && timeout > 0) {
-        actionPromise = withTimeout(actionPromise, timeout, step.name);
-      }
-      return actionPromise;
-    }, retries, retryDelay);
+    try {
+      const result = await withRetry(async () => {
+        let actionPromise = Promise.resolve().then(() => step.action(context));
+        if (timeout && timeout > 0) {
+          actionPromise = withTimeout(actionPromise, timeout, step.name);
+        }
+        return actionPromise;
+      }, retries, retryDelay);
 
-    await this.hooks.onStepSuccess?.(step.name, result, context);
-    return { step, result };
+      await this.hooks.onStepSuccess?.(step.name, result, context);
+      return { step, result };
+    } catch (error) {
+      if (step.options?.fallback) {
+        const fallback = step.options.fallback;
+        const fallbackResult = await Promise.resolve().then(() => fallback(context));
+        await this.hooks.onStepSuccess?.(`${step.name} (fallback)`, fallbackResult, context);
+        return { step, result: fallbackResult };
+      }
+      throw error;
+    }
   }
 
   /**
@@ -153,7 +165,14 @@ export class SagaExecution<Ctx extends Record<string, any>> {
       if (!step.compensation) continue;
 
       try {
-        await Promise.resolve().then(() => step.compensation!(context, result));
+        const compRetries = step.options?.compensationRetries ?? 0;
+        const compRetryDelay = step.options?.compensationRetryDelay ?? 0;
+
+        await withRetry(
+          () => Promise.resolve().then(() => step.compensation!(context, result)),
+          compRetries,
+          compRetryDelay
+        );
         await this.hooks.onCompensationSuccess?.(step.name, context);
       } catch (error) {
         await this.hooks.onCompensationFailed?.(step.name, error, context);
